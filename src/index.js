@@ -9,7 +9,8 @@ import Promise from 'bluebird';
 const defaults = {
 	baseUrl: 'https://api.telegram.org/bot',
 	timeout: 60 * 1000,
-	interval: 10 * 1000,
+	// interval: 10 * 1000,
+	interval: 10 * 100,
 };
 
 export const filters = {
@@ -27,11 +28,27 @@ export const filters = {
 			return entity && text.substr(entity.offset, entity.length) === `/${name}`;
 		};
 	},
+
+	callbacks() {
+		return ({callback_query}) => callback_query;
+	},
+
+	inlineQueries() {
+		return ({inline_query}) => inline_query;
+	},
+
+	game(shortName) {
+		return ({callback_query = {}}) => callback_query.game_short_name === shortName;
+	},
 };
 
 export const replies = {
-	text(string) {
-		return message => string;
+	text(text) {
+		return () => ({text});
+	},
+
+	game(url) {
+		return () => ({url});
 	},
 };
 
@@ -123,10 +140,23 @@ export default class Bot {
 				.resolve(handler(payload))
 				.then(response => {
 					if ('message' in payload) {
-						return this.invokeMethod('sendMessage', {
+						return this.invokeMethod('sendMessage', Object.assign({
 							chat_id: payload.message.chat.id,
-							text: response,
-						});
+						}, response));
+					}
+
+					if ('callback_query' in payload) {
+						return this.invokeMethod('answerCallbackQuery', Object.assign({
+							callback_query_id: payload.callback_query.id,
+						}, response));
+					}
+
+					if ('inline_query' in payload) {
+						return this.invokeMethod('answerInlineQuery', Object.assign({
+							inline_query_id: payload.inline_query.id,
+						}, response, {
+							results: JSON.stringify(response.results),
+						}));
 					}
 
 					console.log(`I don't know how to reply to message with update_id = ${payload.update_id} =(`);

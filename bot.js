@@ -8,8 +8,17 @@ import tokens from './tokens.json';
 
 const CACHE = './cache.json';
 
-const {command} = filters;
-const {text} = replies;
+const {
+	game,
+	command,
+	callbacks,
+	inlineQueries,
+} = filters;
+
+const {
+	text: textReply,
+	game: gameReply,
+} = replies;
 
 const bot = new Bot(tokens.botazavr);
 
@@ -37,7 +46,23 @@ updates.onValue(({update_id}) => {
 
 updates
 	.filter(command('ping'))
-	.onValue(bot.reply(text('pong')));
+	.onValue(bot.reply(textReply('pong')));
+
+updates
+	.filter(game('runner_4game'))
+	.onValue(bot.reply(gameReply('https://ru.4game.com/4gamer/super-igromir-run-game/')));
+
+updates
+	.filter(inlineQueries())
+	.onValue(bot.reply(payload => {
+		return {
+			results: [{
+				type: 'game',
+				id: `${Date.now()}`,
+				game_short_name: 'runner_4game',
+			}],
+		};
+	}));
 
 process.on('exit', exitHandler);
 process.on('SIGINT', exitHandler);
