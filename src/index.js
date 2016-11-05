@@ -75,12 +75,18 @@ export default class Bot {
 					.then(poller);
 			};
 
-			poller();
-
-			return () => {
+			const stop = () => {
 				isActive = false;
 				timeout && clearTimeout(timeout);
 			};
+
+			process.on('exit', stop);
+			process.on('SIGINT', stop);
+			process.on('uncaughtException', stop);
+
+			poller();
+
+			return stop;
 		});
 	}
 
@@ -123,7 +129,7 @@ export default class Bot {
 						});
 					}
 
-					console.log(`I don't know how to reply this message =(`);
+					console.log(`I don't know how to reply to message with update_id = ${payload.update_id} =(`);
 				});
 		}
 	}

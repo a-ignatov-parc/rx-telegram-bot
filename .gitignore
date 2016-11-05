@@ -2,10 +2,10 @@
 *~
 .DS_Store
 
-# Build files
-build.json
+# Temp files
+tokens.json
+cache.json
 
 # Build files
 npm-debug.log
 node_modules/
-out/
