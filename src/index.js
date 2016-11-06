@@ -1,5 +1,6 @@
 'use strict';
 
+import http from 'http';
 import stream from 'stream';
 
 import Bacon from 'baconjs';
@@ -18,6 +19,7 @@ import SendGame from './replies/send-game';
 
 const defaults = {
 	baseUrl: 'https://api.telegram.org/bot',
+	webhook: false,
 	timeout: 60 * 1000,
 	interval: 100,
 };
@@ -88,7 +90,7 @@ export default class Bot {
 	initStream(cache) {
 		const ids = {};
 		const stream = new Bacon.Bus();
-		const polling = stream.plug(this.initPolling());
+		const updates = stream.plug(this.initRealtimeUpdates());
 		const filtered = stream.filter(({update_id}) => !(update_id in ids));
 
 		filtered.onValue(update => {
@@ -98,6 +100,45 @@ export default class Bot {
 		});
 
 		return filtered;
+	}
+
+	initRealtimeUpdates() {
+		if (this.options.webhook) {
+			return this.initWebhook();
+		} else {
+			return this.initPolling();
+		}
+	}
+
+	initWebhook() {
+		return Bacon.fromBinder(sink => {
+			const {url, host, port} = this.options.webhook;
+
+			const server = http.createServer((request, response) => {
+				if (request.method === 'POST') {
+					request.pipe(consumeBuffer(buffer => {
+						const string = buffer.toString();
+						const json = JSON.parse(string);
+						response.end();
+						sink(json);
+					}));
+				}
+			});
+
+			const stop = () => {
+				server.close(() => console.log(`Webhook server is stopped`));
+			};
+
+			process.on('exit', stop);
+			process.on('SIGINT', stop);
+			process.on('uncaughtException', stop);
+
+			this.invokeMethod('setWebhook', {url})
+				.then(() => new Promise(resolve => server.listen(port, host, resolve)))
+				.then(() => console.log(`Webhook server started at ${host}:${port}`));
+
+			return stop;
+		});
 	}
 
 	initPolling() {
@@ -147,7 +188,7 @@ export default class Bot {
 			const url = `${this.options.baseUrl + this.token}/${name}`;
 
 			request
-				.get({url, qs: params, timeout: this.options.timeout})
+				.get({url, qs: params})
 				.on('response', ({request: {uri, method}, statusCode}) => console.log(`${method}: ${uri.href} -> ${statusCode}`))
 				.on('error', reject)
 				.pipe(consumeBuffer(buffer => resolve(buffer)));

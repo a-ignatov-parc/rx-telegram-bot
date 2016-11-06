@@ -35,8 +35,11 @@ try {
 if (!cache.botazavr) cache.botazavr = {};
 
 const bot = new Bot(tokens.botazavr, {
-	// interval: 10 * 1000,
-	interval: 10 * 100,
+	webhook: {
+		url: 'https://c8b42853.ngrok.io',
+		host: 'localhost',
+		port: 3000,
+	},
 });
 
 const updates = bot
