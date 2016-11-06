@@ -28,10 +28,11 @@ const defaults = {
 };
 
 export const filters = {
-	text(string) {
+	text(input) {
 		return ({message = {}}) => {
 			const {text = ''} = message;
-			return ~text.indexOf(string);
+			if (input instanceof RegExp) return input.test(text);
+			return ~text.indexOf(input);
 		};
 	},
 

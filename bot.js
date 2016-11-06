@@ -48,10 +48,11 @@ updates.onValue(({update_id}) => {
 
 updates
 	.filter(command('start'))
-	.onValue(bot.reply(textReply('Welcome human!')));
+	.merge(updates.filter(command('help')))
+	.onValue(bot.reply(textReply('Welcome human! How are you doing?')));
 
 updates
-	.filter(text('ping'))
+	.filter(text(/ping/i))
 	.onValue(bot.reply(textReply('pong')));
 
 updates
