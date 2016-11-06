@@ -34,13 +34,7 @@ try {
 
 if (!cache.botazavr) cache.botazavr = {};
 
-const bot = new Bot(tokens.botazavr, {
-	webhook: {
-		url: 'https://c8b42853.ngrok.io',
-		host: 'localhost',
-		port: 3000,
-	},
-});
+const bot = new Bot(tokens.botazavr);
 
 const updates = bot
 	.getUpdatesStream()
