@@ -6,11 +6,20 @@ import Bacon from 'baconjs';
 import request from 'request';
 import Promise from 'bluebird';
 
+import Response from './replies/response';
+
+import Inline from './replies/inline';
+import Callback from './replies/callback';
+
+import Text from './replies/text';
+import HTML from './replies/html';
+import Markdown from './replies/markdown';
+import SendGame from './replies/send-game';
+
 const defaults = {
 	baseUrl: 'https://api.telegram.org/bot',
 	timeout: 60 * 1000,
-	// interval: 10 * 1000,
-	interval: 10 * 100,
+	interval: 100,
 };
 
 export const filters = {
@@ -44,11 +53,27 @@ export const filters = {
 
 export const replies = {
 	text(text) {
-		return () => ({text});
+		return () => new Text(text);
 	},
 
-	game(url) {
-		return () => ({url});
+	markdown(text) {
+		return () => new Markdown(text);
+	},
+
+	html(text) {
+		return () => new HTML(text);
+	},
+
+	startGame(url) {
+		return () => new Callback({url});
+	},
+
+	sendGame(shortName) {
+		return () => new SendGame(shortName);
+	},
+
+	results(results) {
+		return () => new Inline({results});
 	},
 };
 
@@ -139,24 +164,26 @@ export default class Bot {
 			return Promise
 				.resolve(handler(payload))
 				.then(response => {
+					if (response instanceof Response) {
+						return this.invokeMethod(...response.resolve(payload));
+					}
+
+					let commonResponse;
+
 					if ('message' in payload) {
-						return this.invokeMethod('sendMessage', Object.assign({
-							chat_id: payload.message.chat.id,
-						}, response));
+						commonResponse = new Text(response);
 					}
 
 					if ('callback_query' in payload) {
-						return this.invokeMethod('answerCallbackQuery', Object.assign({
-							callback_query_id: payload.callback_query.id,
-						}, response));
+						commonResponse = new Callback(response);
 					}
 
 					if ('inline_query' in payload) {
-						return this.invokeMethod('answerInlineQuery', Object.assign({
-							inline_query_id: payload.inline_query.id,
-						}, response, {
-							results: JSON.stringify(response.results),
-						}));
+						commonResponse = new Inline(response);
+					}
+
+					if (commonResponse) {
+						return this.invokeMethod(...commonResponse.resolve(payload));
 					}
 
 					console.log(`I don't know how to reply to message with update_id = ${payload.update_id} =(`);

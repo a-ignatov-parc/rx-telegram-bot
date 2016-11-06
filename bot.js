@@ -10,17 +10,19 @@ const CACHE = './cache.json';
 
 const {
 	game,
+	text,
 	command,
 	callbacks,
 	inlineQueries,
 } = filters;
 
 const {
+	sendGame,
+	startGame,
 	text: textReply,
-	game: gameReply,
+	results: resultsReply,
+	markdown: markdownReply,
 } = replies;
-
-const bot = new Bot(tokens.botazavr);
 
 let cache;
 
@@ -32,6 +34,11 @@ try {
 
 if (!cache.botazavr) cache.botazavr = {};
 
+const bot = new Bot(tokens.botazavr, {
+	// interval: 10 * 1000,
+	interval: 10 * 100,
+});
+
 const updates = bot
 	.getUpdatesStream()
 	.filter(({update_id}) => update_id > (cache.botazavr.lastUpdateId || 0));
@@ -42,27 +49,29 @@ updates.onValue(({update_id}) => {
 	}
 });
 
-// updates.log(111);
+updates
+	.filter(command('start'))
+	.onValue(bot.reply(textReply('Welcome human!')));
 
 updates
-	.filter(command('ping'))
+	.filter(text('ping'))
 	.onValue(bot.reply(textReply('pong')));
 
 updates
+	.filter(command('game'))
+	.onValue(bot.reply(sendGame('runner_4game')));
+
+updates
 	.filter(game('runner_4game'))
-	.onValue(bot.reply(gameReply('https://ru.4game.com/4gamer/super-igromir-run-game/')));
+	.onValue(bot.reply(startGame('https://ru.4game.com/4gamer/super-igromir-run-game/')));
 
 updates
 	.filter(inlineQueries())
-	.onValue(bot.reply(payload => {
-		return {
-			results: [{
-				type: 'game',
-				id: `${Date.now()}`,
-				game_short_name: 'runner_4game',
-			}],
-		};
-	}));
+	.onValue(bot.reply(resultsReply([{
+		type: 'game',
+		id: `${Date.now()}`,
+		game_short_name: 'runner_4game',
+	}])));
 
 process.on('exit', exitHandler);
 process.on('SIGINT', exitHandler);
