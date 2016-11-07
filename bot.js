@@ -34,7 +34,9 @@ try {
 
 if (!cache.botazavr) cache.botazavr = {};
 
-const bot = new Bot(tokens.botazavr);
+const bot = new Bot(tokens.botazavr, {
+	port: 9001,
+});
 
 const updates = bot
 	.getUpdatesStream()

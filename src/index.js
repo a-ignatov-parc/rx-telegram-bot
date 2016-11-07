@@ -23,6 +23,7 @@ const defaults = {
 	timeout: 60 * 1000,
 	interval: 100,
 	useWebhook: true,
+	webhookUrl: null,
 	host: 'localhost',
 	port: 3000,
 };
@@ -116,7 +117,7 @@ export default class Bot {
 
 	initWebhook() {
 		return Bacon.fromBinder(sink => {
-			const {host, port} = this.options;
+			const {host, port, webhookUrl} = this.options;
 
 			const server = http.createServer((request, response) => {
 				if (request.method === 'POST') {
@@ -140,7 +141,8 @@ export default class Bot {
 			process.on('SIGINT', stop);
 			process.on('uncaughtException', stop);
 
-			this.initNgrokProxy(port)
+			Promise
+				.resolve(webhookUrl || this.initNgrokProxy(port))
 				.then(url => this.invokeMethod('setWebhook', {url}))
 				.then(() => new Promise(resolve => server.listen(port, host, resolve)))
 				.then(() => console.log(`Webhook server started at ${host}:${port}`));
@@ -175,7 +177,7 @@ export default class Bot {
 			process.on('SIGINT', stop);
 			process.on('uncaughtException', stop);
 
-			poller();
+			this.invokeMethod('setWebhook', {url: ''}).then(poller);
 
 			return stop;
 		});
