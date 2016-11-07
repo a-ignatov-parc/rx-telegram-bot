@@ -26,6 +26,7 @@ export default class StartGame extends Callback {
 
 		const gameUrl = url.format(gameUrlObj);
 
+		console.log('game_url ->', gameUrl);
 		console.log('score_url ->', redirectUrl);
 
 		return Object.assign({}, params, {url: gameUrl});
