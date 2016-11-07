@@ -1,5 +1,6 @@
 'use strict';
 
+import url from 'url';
 import http from 'http';
 import stream from 'stream';
 
@@ -17,15 +18,23 @@ import Text from './replies/text';
 import HTML from './replies/html';
 import Markdown from './replies/markdown';
 import SendGame from './replies/send-game';
+import SendScore from './replies/send-score';
+import StartGame from './replies/start-game';
 
 const defaults = {
 	baseUrl: 'https://api.telegram.org/bot',
 	timeout: 60 * 1000,
 	interval: 100,
-	useWebhook: true,
-	webhookUrl: null,
+	webhook: true,
 	host: 'localhost',
 	port: 3000,
+	url: null,
+};
+
+const GAME_SCORE = 'game_score';
+
+export const notifications = {
+	GAME_SCORE,
 };
 
 export const filters = {
@@ -72,7 +81,7 @@ export const replies = {
 	},
 
 	startGame(url) {
-		return () => new Callback({url});
+		return () => new StartGame({url});
 	},
 
 	sendGame(shortName) {
@@ -82,58 +91,83 @@ export const replies = {
 	results(results) {
 		return () => new Inline({results});
 	},
+
+	sendScore(params) {
+		return () => new SendScore(params);
+	},
 };
 
 export default class Bot {
 	constructor(token, options = {}) {
 		this.options = Object.assign({}, defaults, options);
+
+		const {
+			url,
+			host,
+			port,
+			webhook,
+		} = this.options;
+
 		this.token = token;
-		this.cache = [];
-		this.stream = this.initStream(this.cache);
+		this.server = this.initServer(url, host, port);
+		this.notifications = this.initNotifications(this.server);
+		this.messages = this.initMessages();
+		this.messages.plug(webhook ? this.initWebhook(this.server) : this.initPolling());
 	}
 
-	initStream(cache) {
+	initMessages() {
 		const ids = {};
+		const history = [];
 		const stream = new Bacon.Bus();
-		const updates = stream.plug(this.initRealtimeUpdates());
 		const filtered = stream.filter(({update_id}) => !(update_id in ids));
 
 		filtered.onValue(update => {
 			const {update_id} = update;
-			const cacheIndex = cache.push(update) - 1;
-			ids[update_id] = cacheIndex;
+			const historyIndex = history.push(update) - 1;
+			ids[update_id] = historyIndex;
 		});
 
-		return filtered;
+		return {
+			history,
+			stream: filtered,
+			plug(substream) {
+				return stream.plug(substream);
+			},
+		};
 	}
 
-	initRealtimeUpdates() {
-		if (this.options.useWebhook) {
-			return this.initWebhook();
-		} else {
-			return this.initPolling();
-		}
-	}
+	initServer(url, host, port) {
+		const urlResolver = Promise.resolve(url || this.initNgrokProxy(port));
 
-	initWebhook() {
-		return Bacon.fromBinder(sink => {
-			const {host, port, webhookUrl} = this.options;
-
+		const stream = Bacon.fromBinder(sink => {
 			const server = http.createServer((request, response) => {
-				if (request.method === 'POST') {
-					request.pipe(consumeBuffer(buffer => {
-						const string = buffer.toString();
-						const json = JSON.parse(string);
-						response.end();
-						sink(json);
-					}));
+				const {method, url} = request;
+
+				if (method === 'GET' || method === 'HEAD') {
+					response.end();
+					return sink({url, method});
 				}
+
+				request.pipe(consumeBuffer(buffer => {
+					const string = buffer.toString();
+					const body = JSON.parse(string);
+					response.end();
+					sink({url, method, body});
+				}));
 			});
 
+			const serverInit = urlResolver.then(url => {
+				return new Promise(resolve => {
+					server.listen(port, host, () => resolve({url, host, port}));
+				});
+			});
+
+			serverInit.then(({host, port}) => console.log(`Server started at ${host}:${port}`));
+
 			const stop = () => {
-				server.close(() => {
-					console.log(`Webhook server is stopped`);
-					ngrok.disconnect();
+				serverInit.then(({url}) => {
+					ngrok.disconnect(url);
+					server.close(() => console.log(`Server is stopped`));
 				});
 			};
 
@@ -141,14 +175,53 @@ export default class Bot {
 			process.on('SIGINT', stop);
 			process.on('uncaughtException', stop);
 
-			Promise
-				.resolve(webhookUrl || this.initNgrokProxy(port))
-				.then(url => this.invokeMethod('setWebhook', {url}))
-				.then(() => new Promise(resolve => server.listen(port, host, resolve)))
-				.then(() => console.log(`Webhook server started at ${host}:${port}`));
-
 			return stop;
 		});
+
+		Object.assign(stream, {
+			resolveUrl() {
+				return urlResolver;
+			}
+		});
+
+		return stream;
+	}
+
+	initNgrokProxy(port) {
+		return new Promise((resolve, reject) => {
+			ngrok.connect(port, (error, url) => {
+				if (error) return reject(error);
+				resolve(url);
+			});
+		});
+	}
+
+	initNotifications(server) {
+		return server
+			.map(payload => {
+				const {query} = url.parse(payload.url, true);
+				return {query, payload};
+			})
+			.filter(({query}) => 'score_id' in query)
+			.map(({query: {score_id, score}}) => {
+				const [user_id, message_id, chat_id] = new Buffer(score_id, 'hex').toString().split('-');
+				return {
+					type: GAME_SCORE,
+					payload: {user_id, message_id, chat_id, score},
+				};
+			});
+	}
+
+	initWebhook(server) {
+		const suffix = '/hook';
+
+		server
+			.resolveUrl()
+			.then(url => this.invokeMethod('setWebhook', {url: url + suffix}));
+
+		return server
+			.filter(({url, method}) => url === suffix && method === 'POST')
+			.map('.body');
 	}
 
 	initPolling() {
@@ -183,23 +256,18 @@ export default class Bot {
 		});
 	}
 
-	initNgrokProxy(port = 3000) {
-		return new Promise((resolve, reject) => {
-			ngrok.connect(port, (error, url) => {
-				if (error) return reject(error);
-				resolve(url);
-			});
-		});
+	getNotificationsStream() {
+		return this.notifications;
 	}
 
 	getUpdatesStream() {
-		return this.stream;
+		return this.messages.stream;
 	}
 
 	getAllUpdatesStream() {
 		return Bacon
-			.fromArray(this.cache)
-			.merge(this.stream);
+			.fromArray(this.messages.history)
+			.merge(this.messages.stream);
 	}
 
 	invokeMethod(name, params = {}) {
@@ -224,6 +292,12 @@ export default class Bot {
 			return Promise
 				.resolve(handler(payload))
 				.then(response => {
+					if (response instanceof StartGame) {
+						return this.server
+							.resolveUrl()
+							.then(url => this.invokeMethod(...response.resolve(payload, url)))
+					}
+
 					if (response instanceof Response) {
 						return this.invokeMethod(...response.resolve(payload));
 					}

@@ -14,10 +14,10 @@ export default class Response {
 		return this.params;
 	}
 
-	resolve(payload) {
+	resolve(payload, ...params) {
 		return [
-			this.resolveMethodName(payload),
-			this.resolveParams(payload),
+			this.resolveMethodName(payload, ...params),
+			this.resolveParams(payload, ...params),
 		];
 	}
 }

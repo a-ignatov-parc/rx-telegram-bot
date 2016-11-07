@@ -2,7 +2,7 @@
 
 import fs from 'fs';
 
-import Bot, {filters, replies} from './src/index';
+import Bot, {filters, replies, notifications} from './src/index';
 
 import tokens from './tokens.json';
 
@@ -18,11 +18,14 @@ const {
 
 const {
 	sendGame,
+	sendScore,
 	startGame,
 	text: textReply,
 	results: resultsReply,
 	markdown: markdownReply,
 } = replies;
+
+const {GAME_SCORE} = notifications;
 
 let cache;
 
@@ -37,6 +40,11 @@ if (!cache.botazavr) cache.botazavr = {};
 const bot = new Bot(tokens.botazavr, {
 	port: 9001,
 });
+
+bot
+	.getNotificationsStream()
+	.filter(({type}) => type === GAME_SCORE)
+	.onValue(bot.reply(sendScore({edit_message: true})));
 
 const updates = bot
 	.getUpdatesStream()
