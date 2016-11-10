@@ -71,7 +71,7 @@ updates
 
 updates
 	.filter(game('runner_4game'))
-	.onValue(bot.reply(startGame('https://ru.4game.com/4gamer/super-igromir-run-game/')));
+	.onValue(bot.reply(startGame('https://a-ignatov-parc.github.io/igromir/game/')));
 
 updates
 	.filter(inlineQueries())
